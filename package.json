@@ -1,0 +1,13 @@
+{
+  "name": "jarvis-daily-ideas",
+  "version": "1.0.0",
+  "description": "JARVIS — Daily AI + Crypto business idea generator via Telegram",
+  "type": "module",
+  "scripts": {
+    "start": "node jarvis.mjs",
+    "test": "node jarvis.mjs --dry-run"
+  },
+  "dependencies": {
+    "node-fetch": "^3.3.2"
+  }
+}
