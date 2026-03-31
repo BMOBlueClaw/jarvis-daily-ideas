@@ -1,0 +1,77 @@
+name: JARVIS Spawn Project
+
+on:
+  workflow_dispatch:
+    inputs:
+      project_name:
+        description: "New project repo name"
+        required: true
+      description:
+        description: "Project description"
+        required: false
+        default: "JARVIS auto-spawned project"
+      visibility:
+        description: "public or private"
+        required: false
+        default: "private"
+      files:
+        description: "JSON object of filename→content to seed the repo"
+        required: false
+
+jobs:
+  spawn:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Create new repository
+        env:
+          GH_TOKEN: ${{ secrets.GH_PAT }}
+        run: |
+          set -e
+          REPO="${{ inputs.project_name }}"
+          DESC="${{ inputs.description }}"
+          VIS="${{ inputs.visibility }}"
+
+          echo "🤖 JARVIS spawning: $REPO ($VIS)"
+
+          # Create repo
+          gh repo create "$REPO" "--$VIS" --description "$DESC" || echo "Repo may already exist"
+
+          # Clone it
+          git clone "https://x-access-token:${GH_TOKEN}@github.com/${{ github.repository_owner }}/${REPO}.git" repo
+          cd repo
+
+          # Seed with README
+          echo "# $REPO" > README.md
+          echo "" >> README.md
+          echo "$DESC" >> README.md
+          echo "" >> README.md
+          echo "_Auto-created by JARVIS on $(date -u +%Y-%m-%d)_" >> README.md
+
+          # Seed additional files if provided
+          if [[ -n '${{ inputs.files }}' && '${{ inputs.files }}' != '' ]]; then
+            echo '${{ inputs.files }}' | jq -r 'to_entries[] | "\(.key)\n\(.value)"' | while read -r fname && read -r content; do
+              mkdir -p "$(dirname "$fname")"
+              echo "$content" > "$fname"
+              echo "  ✓ Created $fname"
+            done
+          fi
+
+          git add -A
+          git commit -m "JARVIS: initial spawn"
+          git push
+
+          echo "✅ https://github.com/${{ github.repository_owner }}/$REPO"
+
+      - name: Notify Telegram
+        if: always()
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          REPO="${{ inputs.project_name }}"
+          STATUS="${{ job.status }}"
+          MSG="🤖 *JARVIS Project Spawn*%0A%0ARepo: \`$REPO\`%0AStatus: $STATUS%0ALink: https://github.com/${{ github.repository_owner }}/$REPO"
+          curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
+            -d "chat_id=${TELEGRAM_CHAT_ID}" \
+            -d "text=${MSG}" \
+            -d "parse_mode=Markdown" || true
