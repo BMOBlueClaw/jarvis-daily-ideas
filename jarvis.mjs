@@ -15,16 +15,55 @@ const TELEGRAM_CHAT_ID = process.env.TELEGRAM_CHAT_ID;
 const DRY_RUN = process.argv.includes("--dry-run");
 const DATA_DIR = join(__dirname, "data");
 const IDEAS_DB = join(DATA_DIR, "ideas.json");
+const FETCH_TIMEOUT_MS = 15_000;
+
+// ─── OWASP: Input Validation ───────────────────────────────────────────────────
+
+function validateEnvVars() {
+  if (DRY_RUN) return;
+  if (!TELEGRAM_BOT_TOKEN || !/^\d+:[A-Za-z0-9_-]{35,}$/.test(TELEGRAM_BOT_TOKEN)) {
+    throw new Error("TELEGRAM_BOT_TOKEN missing or malformed");
+  }
+  if (!TELEGRAM_CHAT_ID || !/^-?\d+$/.test(TELEGRAM_CHAT_ID)) {
+    throw new Error("TELEGRAM_CHAT_ID missing or malformed");
+  }
+}
+
+function isValidUrl(str) {
+  try {
+    const u = new URL(str);
+    return u.protocol === "https:" || u.protocol === "http:";
+  } catch {
+    return false;
+  }
+}
+
+function sanitizeText(str, maxLen = 500) {
+  if (typeof str !== "string") return "";
+  return str.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g, "").slice(0, maxLen);
+}
 
 // ─── Data Sources ──────────────────────────────────────────────────────────────
 
 async function fetchJSON(url, options = {}) {
-  const res = await fetch(url, {
-    headers: { "User-Agent": "JARVIS-BusinessBot/1.0" },
-    ...options,
-  });
-  if (!res.ok) throw new Error(`${url} → ${res.status}`);
-  return res.json();
+  if (!isValidUrl(url)) throw new Error(`Invalid URL blocked: ${url}`);
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+  try {
+    const res = await fetch(url, {
+      headers: { "User-Agent": "JARVIS-BusinessBot/1.0" },
+      signal: controller.signal,
+      redirect: "error", // OWASP: prevent open redirect / SSRF chains
+      ...options,
+    });
+    if (!res.ok) throw new Error(`${url} → ${res.status}`);
+    const body = await res.text();
+    // OWASP: limit response size to prevent DoS via large payloads
+    if (body.length > 5_000_000) throw new Error(`Response too large: ${body.length} bytes`);
+    return JSON.parse(body);
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 /** Top AI/ML posts from HackerNews (Algolia API) */
@@ -32,12 +71,15 @@ async function getHackerNewsTrends() {
   const data = await fetchJSON(
     "https://hn.algolia.com/api/v1/search?query=AI+machine+learning+LLM+GPT&tags=story&hitsPerPage=10&numericFilters=points>50"
   );
-  return data.hits.map((h) => ({
-    source: "HackerNews",
-    title: h.title,
-    url: h.url || `https://news.ycombinator.com/item?id=${h.objectID}`,
-    score: h.points,
-  }));
+  return data.hits.map((h) => {
+    const itemUrl = h.url || `https://news.ycombinator.com/item?id=${encodeURIComponent(h.objectID)}`;
+    return {
+      source: "HackerNews",
+      title: sanitizeText(h.title, 200),
+      url: isValidUrl(itemUrl) ? itemUrl : `https://news.ycombinator.com/item?id=${encodeURIComponent(h.objectID)}`,
+      score: Number(h.points) || 0,
+    };
+  });
 }
 
 /** Top AI posts from Reddit */
@@ -48,12 +90,15 @@ async function getRedditAITrends() {
   return data.data.children
     .filter((c) => !c.data.stickied)
     .slice(0, 8)
-    .map((c) => ({
-      source: "Reddit",
-      title: c.data.title,
-      url: `https://reddit.com${c.data.permalink}`,
-      score: c.data.score,
-    }));
+    .map((c) => {
+      const permalink = (c.data.permalink || "").replace(/[^a-zA-Z0-9/_\-]/g, "");
+      return {
+        source: "Reddit",
+        title: sanitizeText(c.data.title, 200),
+        url: `https://reddit.com${permalink}`,
+        score: Number(c.data.score) || 0,
+      };
+    });
 }
 
 /** Trending crypto tokens + big movers from CoinGecko (free, no key) */
@@ -62,9 +107,9 @@ async function getCryptoTrends() {
     "https://api.coingecko.com/api/v3/search/trending"
   );
   const coins = trending.coins.slice(0, 7).map((c) => ({
-    name: c.item.name,
-    symbol: c.item.symbol,
-    marketCapRank: c.item.market_cap_rank,
+    name: sanitizeText(c.item.name, 50),
+    symbol: sanitizeText(c.item.symbol, 10),
+    marketCapRank: Number(c.item.market_cap_rank) || null,
     priceChange24h: c.item.data?.price_change_percentage_24h?.usd ?? "N/A",
   }));
 
@@ -81,10 +126,10 @@ async function getCryptoTrends() {
     )
     .slice(0, 5)
     .map((m) => ({
-      name: m.name,
-      symbol: m.symbol.toUpperCase(),
+      name: sanitizeText(m.name, 50),
+      symbol: sanitizeText(m.symbol, 10).toUpperCase(),
       priceChange24h: m.price_change_percentage_24h_in_currency?.toFixed(1),
-      price: m.current_price,
+      price: Number(m.current_price) || 0,
     }));
 
   return { trendingCoins: coins, topGainers };
@@ -178,6 +223,7 @@ async function sendTelegram(text) {
     return;
   }
 
+  // Validation already done in validateEnvVars(), but defense-in-depth
   if (!TELEGRAM_BOT_TOKEN || !TELEGRAM_CHAT_ID) {
     throw new Error(
       "Missing TELEGRAM_BOT_TOKEN or TELEGRAM_CHAT_ID environment variables"
@@ -185,22 +231,29 @@ async function sendTelegram(text) {
   }
 
   const url = `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`;
-  const res = await fetch(url, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      chat_id: TELEGRAM_CHAT_ID,
-      text,
-      parse_mode: "Markdown",
-      disable_web_page_preview: true,
-    }),
-  });
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+  try {
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      signal: controller.signal,
+      body: JSON.stringify({
+        chat_id: TELEGRAM_CHAT_ID,
+        text: text.slice(0, 4096), // Telegram message limit
+        parse_mode: "Markdown",
+        disable_web_page_preview: true,
+      }),
+    });
 
-  if (!res.ok) {
-    const err = await res.text();
-    throw new Error(`Telegram API error: ${res.status} ${err}`);
+    if (!res.ok) {
+      const err = await res.text();
+      throw new Error(`Telegram API error: ${res.status} ${err.slice(0, 200)}`);
+    }
+    console.log("Message sent to Telegram successfully.");
+  } finally {
+    clearTimeout(timer);
   }
-  console.log("Message sent to Telegram successfully.");
 }
 
 // ─── Message Formatter ─────────────────────────────────────────────────────────
@@ -249,6 +302,7 @@ function formatMessage(aiTrends, crypto, ideas, date) {
 // ─── Main ──────────────────────────────────────────────────────────────────────
 
 async function main() {
+  validateEnvVars();
   const date = new Date().toISOString().split("T")[0];
   console.log(`JARVIS running for ${date}...`);
 

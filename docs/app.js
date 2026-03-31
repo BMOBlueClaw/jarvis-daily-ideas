@@ -3,16 +3,31 @@
 
 const DATA_URL = "../data/ideas.json";
 const STORAGE_KEY = "jarvis-starred";
+const MAX_DB_SIZE = 2_000_000; // OWASP: limit response size (2MB)
 
 let allEntries = [];
 let starred = loadStarred();
 let activeFilter = "all";
 
+// ── OWASP: Input Validation for loaded data ─────────────────────
+
+function validateDbSchema(db) {
+  if (!db || typeof db !== "object") return false;
+  if (!Array.isArray(db.entries)) return false;
+  return db.entries.every(e =>
+    typeof e.date === "string" && /^\d{4}-\d{2}-\d{2}$/.test(e.date) &&
+    Array.isArray(e.ideas)
+  );
+}
+
 // ── Starred persistence (localStorage) ─────────────────────────────
 
 function loadStarred() {
   try {
-    return new Set(JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]"));
+    const raw = JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]");
+    // OWASP: validate stored data shape
+    if (!Array.isArray(raw) || raw.length > 10000) return new Set();
+    return new Set(raw.filter(id => typeof id === "string" && /^\d{4}-\d{2}-\d{2}-\d+$/.test(id)));
   } catch {
     return new Set();
   }
@@ -38,7 +53,12 @@ async function loadData() {
   try {
     const res = await fetch(DATA_URL);
     if (!res.ok) throw new Error(`Failed to load data (${res.status})`);
-    const db = await res.json();
+    const text = await res.text();
+    // OWASP: limit payload size
+    if (text.length > MAX_DB_SIZE) throw new Error("Data file too large");
+    const db = JSON.parse(text);
+    // OWASP: validate schema before use
+    if (!validateDbSchema(db)) throw new Error("Invalid data format");
     allEntries = (db.entries || []).slice().reverse(); // newest first
 
     document.getElementById("last-updated").textContent =
@@ -96,14 +116,14 @@ function render() {
       html.push(renderMarketCards(entry));
     }
 
-    // Idea cards
+    // Idea cards — OWASP: use data attributes instead of inline onclick (CSP-safe)
     for (const idea of ideas) {
       const isStarred = starred.has(idea.id);
       html.push(`
         <div class="idea-card${isStarred ? " starred" : ""}">
           <div class="idea-top">
             <span class="idea-type" data-type="${esc(idea.type)}">${esc(idea.type)}</span>
-            <button class="star-btn${isStarred ? " active" : ""}" onclick="toggleStar('${esc(idea.id)}')" title="${isStarred ? "Unstar" : "Star this idea"}">⭐</button>
+            <button class="star-btn${isStarred ? " active" : ""}" data-star-id="${esc(idea.id)}" title="${isStarred ? "Unstar" : "Star this idea"}">⭐</button>
           </div>
           <div class="idea-text">${esc(idea.idea)}</div>
           <div class="idea-trend">${esc(idea.trend)}</div>
@@ -123,6 +143,16 @@ function render() {
   statsEl.textContent = `${totalIdeas} ideas across ${allEntries.length} days • ${totalStarred} starred`;
 }
 
+// OWASP: validate href URLs in market cards
+function escUrl(str) {
+  if (typeof str !== "string") return "#";
+  try {
+    const u = new URL(str);
+    if (u.protocol === "https:" || u.protocol === "http:") return str;
+  } catch {}
+  return "#";
+}
+
 function renderMarketCards(entry) {
   if (!entry.crypto && !entry.aiTrends) return "";
 
@@ -132,7 +162,7 @@ function renderMarketCards(entry) {
   if (entry.aiTrends && entry.aiTrends.length > 0) {
     html += `<div class="market-card"><h3>📡 AI Trends</h3><ul>`;
     for (const t of entry.aiTrends.slice(0, 4)) {
-      html += `<li><a href="${esc(t.url)}" target="_blank" rel="noopener">${esc(truncate(t.title, 60))}</a> <span style="color:var(--text-muted)">(${t.score}pts)</span></li>`;
+      html += `<li><a href="${escUrl(t.url)}" target="_blank" rel="noopener noreferrer">${esc(truncate(t.title, 60))}</a> <span style="color:var(--text-muted)">(${t.score}pts)</span></li>`;
     }
     html += `</ul></div>`;
   }

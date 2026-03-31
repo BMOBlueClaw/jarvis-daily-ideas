@@ -14,64 +14,84 @@ on:
         description: "public or private"
         required: false
         default: "private"
-      files:
-        description: "JSON object of filename→content to seed the repo"
-        required: false
+
+# OWASP: Least privilege — only needs repo creation via GH_PAT
+permissions: {}
 
 jobs:
   spawn:
     runs-on: ubuntu-latest
     steps:
       - name: Create new repository
+        # OWASP A03: Pass inputs via env vars, never interpolate in shell
         env:
           GH_TOKEN: ${{ secrets.GH_PAT }}
+          INPUT_REPO: ${{ inputs.project_name }}
+          INPUT_DESC: ${{ inputs.description }}
+          INPUT_VIS: ${{ inputs.visibility }}
+          REPO_OWNER: ${{ github.repository_owner }}
         run: |
-          set -e
-          REPO="${{ inputs.project_name }}"
-          DESC="${{ inputs.description }}"
-          VIS="${{ inputs.visibility }}"
+          set -euo pipefail
 
-          echo "🤖 JARVIS spawning: $REPO ($VIS)"
+          # OWASP: Validate repo name — alphanumeric, dots, hyphens, underscores only
+          if [[ ! "$INPUT_REPO" =~ ^[a-zA-Z0-9._-]{1,100}$ ]]; then
+            echo "❌ Invalid repo name. Only alphanumerics, dots, hyphens, underscores (max 100 chars)."
+            exit 1
+          fi
+
+          # OWASP: Validate visibility
+          if [[ "$INPUT_VIS" != "private" && "$INPUT_VIS" != "public" ]]; then
+            echo "❌ Invalid visibility. Must be 'public' or 'private'."
+            exit 1
+          fi
+
+          # OWASP: Sanitize description (strip control chars, limit length)
+          SAFE_DESC=$(echo "$INPUT_DESC" | tr -cd '[:print:]' | head -c 200)
+
+          echo "🤖 JARVIS spawning: $INPUT_REPO ($INPUT_VIS)"
 
           # Create repo
-          gh repo create "$REPO" "--$VIS" --description "$DESC" || echo "Repo may already exist"
+          gh repo create "$INPUT_REPO" "--$INPUT_VIS" --description "$SAFE_DESC" || echo "Repo may already exist"
 
           # Clone it
-          git clone "https://x-access-token:${GH_TOKEN}@github.com/${{ github.repository_owner }}/${REPO}.git" repo
+          git clone "https://x-access-token:${GH_TOKEN}@github.com/${REPO_OWNER}/${INPUT_REPO}.git" repo
           cd repo
 
           # Seed with README
-          echo "# $REPO" > README.md
-          echo "" >> README.md
-          echo "$DESC" >> README.md
-          echo "" >> README.md
-          echo "_Auto-created by JARVIS on $(date -u +%Y-%m-%d)_" >> README.md
+          cat > README.md <<EOF
+          # $INPUT_REPO
 
-          # Seed additional files if provided
-          if [[ -n '${{ inputs.files }}' && '${{ inputs.files }}' != '' ]]; then
-            echo '${{ inputs.files }}' | jq -r 'to_entries[] | "\(.key)\n\(.value)"' | while read -r fname && read -r content; do
-              mkdir -p "$(dirname "$fname")"
-              echo "$content" > "$fname"
-              echo "  ✓ Created $fname"
-            done
-          fi
+          $SAFE_DESC
 
+          _Auto-created by JARVIS on $(date -u +%Y-%m-%d)_
+          EOF
+
+          git config user.name "JARVIS Bot"
+          git config user.email "jarvis@bot.local"
           git add -A
           git commit -m "JARVIS: initial spawn"
           git push
 
-          echo "✅ https://github.com/${{ github.repository_owner }}/$REPO"
+          # OWASP: Remove token from git remote
+          git remote set-url origin "https://github.com/${REPO_OWNER}/${INPUT_REPO}.git"
+
+          echo "✅ https://github.com/${REPO_OWNER}/${INPUT_REPO}"
 
       - name: Notify Telegram
         if: always()
+        # OWASP A03: Use env vars, not interpolated inputs
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          INPUT_REPO: ${{ inputs.project_name }}
+          JOB_STATUS: ${{ job.status }}
+          REPO_OWNER: ${{ github.repository_owner }}
         run: |
-          REPO="${{ inputs.project_name }}"
-          STATUS="${{ job.status }}"
-          MSG="🤖 *JARVIS Project Spawn*%0A%0ARepo: \`$REPO\`%0AStatus: $STATUS%0ALink: https://github.com/${{ github.repository_owner }}/$REPO"
-          curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
+          set -euo pipefail
+          # OWASP: Sanitize for Telegram message (no markdown injection)
+          SAFE_REPO=$(echo "$INPUT_REPO" | tr -cd 'a-zA-Z0-9._-')
+          MSG="🤖 *JARVIS Project Spawn*%0A%0ARepo: ${SAFE_REPO}%0AStatus: ${JOB_STATUS}%0ALink: https://github.com/${REPO_OWNER}/${SAFE_REPO}"
+          curl -sf -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
             -d "chat_id=${TELEGRAM_CHAT_ID}" \
             -d "text=${MSG}" \
-            -d "parse_mode=Markdown" || true
+            -d "parse_mode=Markdown" || echo "⚠️ Telegram notification failed"

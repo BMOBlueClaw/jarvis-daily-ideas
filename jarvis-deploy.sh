@@ -10,7 +10,24 @@ OWNER="BMOBlueClaw"
 PROJECT_DIR="${1:-.}"
 REPO_NAME="${2:-$(basename "$(cd "$PROJECT_DIR" && pwd)")}"
 VISIBILITY="${3:---private}"
+# ─── OWASP: Input Validation ───────────────────────────────────────────────────────────
+if [[ ! "$REPO_NAME" =~ ^[a-zA-Z0-9._-]+$ ]]; then
+  echo "❌ Invalid repo name: '$REPO_NAME'. Only alphanumerics, dots, hyphens, underscores allowed."
+  exit 1
+fi
 
+if [[ "$VISIBILITY" != "--private" && "$VISIBILITY" != "--public" ]]; then
+  echo "❌ Invalid visibility: '$VISIBILITY'. Use --private or --public."
+  exit 1
+fi
+
+# ─── OWASP: Ensure token is removed from remote on any exit ─────────────────
+cleanup_token() {
+  if [[ -d "$PROJECT_DIR/.git" ]] && git -C "$PROJECT_DIR" remote get-url origin &>/dev/null 2>&1; then
+    git -C "$PROJECT_DIR" remote set-url origin "https://github.com/${OWNER}/${REPO_NAME}.git" 2>/dev/null || true
+  fi
+}
+trap cleanup_token EXIT
 # ─── Token Resolution (no human needed) ─────────────────────────────────────────
 resolve_token() {
   # Priority: GH_TOKEN env > gh CLI token > GITHUB_TOKEN (Codespace default)
@@ -77,6 +94,13 @@ echo "   ✓ Pushed"
 
 # ─── Step 4: Set secrets from .env.secrets ───────────────────────────────────────
 if [[ -f .env.secrets ]]; then
+  # OWASP: validate file permissions — secrets file should not be world-readable
+  PERMS=$(stat -c '%a' .env.secrets 2>/dev/null || stat -f '%Lp' .env.secrets 2>/dev/null || echo "unknown")
+  if [[ "$PERMS" != "unknown" && "$PERMS" != "600" && "$PERMS" != "400" ]]; then
+    echo "⚠️  Warning: .env.secrets has loose permissions ($PERMS). Fixing to 600."
+    chmod 600 .env.secrets
+  fi
+
   echo "🔑 Setting GitHub secrets..."
   while IFS='=' read -r key value; do
     # Skip empty lines and comments
@@ -85,6 +109,11 @@ if [[ -f .env.secrets ]]; then
     key="$(echo "$key" | xargs)"
     value="$(echo "$value" | xargs)"
     [[ -z "$key" || -z "$value" ]] && continue
+    # OWASP: validate secret key names (prevent injection via key name)
+    if [[ ! "$key" =~ ^[A-Z_][A-Z0-9_]*$ ]]; then
+      echo "   ⚠️  Skipping invalid key: $key"
+      continue
+    fi
     echo "$value" | gh secret set "$key" -R "$OWNER/$REPO_NAME"
     echo "   ✓ $key"
   done < .env.secrets
@@ -101,7 +130,7 @@ if [[ -d .github/workflows ]]; then
   fi
 fi
 
-# Clean up: remove token from remote URL (leave just the normal HTTPS URL)
+# Clean up: remove token from remote URL (handled by trap, but belt-and-suspenders)
 git remote set-url origin "https://github.com/${OWNER}/${REPO_NAME}.git"
 
 echo ""
