@@ -1,0 +1,158 @@
+{
+  "entries": [
+    {
+      "date": "2026-03-31",
+      "aiTrends": [
+        {
+          "title": "Launch HN: TeamOut (YC W22) – AI agent for planning company retreats",
+          "url": "https://app.teamout.com/ai",
+          "source": "HackerNews",
+          "score": 55
+        },
+        {
+          "title": "Ask HN: How to learn AI from first principles?",
+          "url": "https://news.ycombinator.com/item?id=42827913",
+          "source": "HackerNews",
+          "score": 145
+        },
+        {
+          "title": "Show HN: FastGraphRAG – Better RAG using good old PageRank",
+          "url": "https://github.com/circlemind-ai/fast-graphrag",
+          "source": "HackerNews",
+          "score": 457
+        },
+        {
+          "title": "Show HN: Aide, an open-source AI native IDE",
+          "url": "https://aide.dev/",
+          "source": "HackerNews",
+          "score": 253
+        },
+        {
+          "title": "Show HN: Glossarie – a new, immersive way to learn a language",
+          "url": "https://glossarie.app/",
+          "source": "HackerNews",
+          "score": 363
+        },
+        {
+          "title": "Launch HN: Cyberdesk (YC S25) – Automate Windows legacy desktop apps",
+          "url": "https://news.ycombinator.com/item?id=44901528",
+          "source": "HackerNews",
+          "score": 73
+        }
+      ],
+      "crypto": {
+        "trending": [
+          {
+            "name": "Cardano",
+            "symbol": "ADA",
+            "marketCapRank": 15,
+            "priceChange24h": -0.9250243399078958
+          },
+          {
+            "name": "Avalanche",
+            "symbol": "AVAX",
+            "marketCapRank": 29,
+            "priceChange24h": 1.457736656262367
+          },
+          {
+            "name": "Pudgy Penguins",
+            "symbol": "PENGU",
+            "marketCapRank": 109,
+            "priceChange24h": 1.7876607646026597
+          },
+          {
+            "name": "Bitcoin",
+            "symbol": "BTC",
+            "marketCapRank": 1,
+            "priceChange24h": 2.2574887496008045
+          },
+          {
+            "name": "Quantum Resistant Ledger",
+            "symbol": "QRL",
+            "marketCapRank": 234,
+            "priceChange24h": 41.91559703837219
+          }
+        ],
+        "gainers": [
+          {
+            "name": "​​Stable",
+            "symbol": "STABLE",
+            "priceChange24h": "14.2",
+            "price": 0.02740119
+          },
+          {
+            "name": "Algorand",
+            "symbol": "ALGO",
+            "priceChange24h": "12.7",
+            "price": 0.092601
+          },
+          {
+            "name": "Zcash",
+            "symbol": "ZEC",
+            "priceChange24h": "12.6",
+            "price": 254.86
+          }
+        ]
+      },
+      "ideas": [
+        {
+          "id": "2026-03-31-1",
+          "type": "AI SaaS",
+          "idea": "Build a launch-as-a-Service platform. Monetize with freemium subscriptions + crypto payments (accept top trending tokens).",
+          "trend": "launch",
+          "starred": false
+        },
+        {
+          "id": "2026-03-31-2",
+          "type": "AI SaaS",
+          "idea": "Build a learn-as-a-Service platform. Monetize with freemium subscriptions + crypto payments (accept top trending tokens).",
+          "trend": "learn",
+          "starred": false
+        },
+        {
+          "id": "2026-03-31-3",
+          "type": "AI SaaS",
+          "idea": "Build a teamout-as-a-Service platform. Monetize with freemium subscriptions + crypto payments (accept top trending tokens).",
+          "trend": "teamout",
+          "starred": false
+        },
+        {
+          "id": "2026-03-31-4",
+          "type": "Crypto × AI",
+          "idea": "Create an AI-powered analytics/notification bot for Cardano (ADA) traders. Charge in ADA or stablecoins.",
+          "trend": "Cardano trending #15",
+          "starred": false
+        },
+        {
+          "id": "2026-03-31-5",
+          "type": "Crypto × AI",
+          "idea": "Create an AI-powered analytics/notification bot for Avalanche (AVAX) traders. Charge in AVAX or stablecoins.",
+          "trend": "Avalanche trending #29",
+          "starred": false
+        },
+        {
+          "id": "2026-03-31-6",
+          "type": "Content Business",
+          "idea": "Launch a premium newsletter / course on \"launch\" with crypto-gated access (NFT or token-gated).",
+          "trend": "launch",
+          "starred": false
+        },
+        {
+          "id": "2026-03-31-7",
+          "type": "Crypto Tool",
+          "idea": "Build a sniper/alert bot for tokens like ​​Stable (STABLE, +14.2% today). Sell access via Telegram premium channel.",
+          "trend": "STABLE +14.2%",
+          "starred": false
+        },
+        {
+          "id": "2026-03-31-8",
+          "type": "Crypto Tool",
+          "idea": "Build a sniper/alert bot for tokens like Algorand (ALGO, +12.7% today). Sell access via Telegram premium channel.",
+          "trend": "ALGO +12.7%",
+          "starred": false
+        }
+      ]
+    }
+  ],
+  "lastUpdated": "2026-03-31T20:05:08.510Z"
+}

@@ -1,11 +1,20 @@
 // JARVIS — Daily AI + Crypto Business Idea Generator
 // Scans trending AI topics & crypto markets, generates business ideas, sends to Telegram.
+// Saves all ideas to data/ideas.json for the JARVIS Dashboard.
 
 import fetch from "node-fetch";
+import { readFileSync, writeFileSync, mkdirSync, existsSync } from "fs";
+import { join, dirname } from "path";
+import { fileURLToPath } from "url";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
 
 const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 const TELEGRAM_CHAT_ID = process.env.TELEGRAM_CHAT_ID;
 const DRY_RUN = process.argv.includes("--dry-run");
+const DATA_DIR = join(__dirname, "data");
+const IDEAS_DB = join(DATA_DIR, "ideas.json");
 
 // ─── Data Sources ──────────────────────────────────────────────────────────────
 
@@ -275,7 +284,59 @@ async function main() {
   const message = formatMessage(aiTrends, cryptoData, ideas, date);
   await sendTelegram(message);
 
+  // Persist ideas to JSON database for the dashboard
+  saveIdeasToDb(date, aiTrends, cryptoData, ideas);
+
   console.log("JARVIS daily run complete.");
+}
+
+// ─── Ideas Database ────────────────────────────────────────────────────────────
+
+function saveIdeasToDb(date, aiTrends, cryptoData, ideas) {
+  if (!existsSync(DATA_DIR)) mkdirSync(DATA_DIR, { recursive: true });
+
+  let db = { entries: [] };
+  if (existsSync(IDEAS_DB)) {
+    try {
+      db = JSON.parse(readFileSync(IDEAS_DB, "utf-8"));
+    } catch {
+      db = { entries: [] };
+    }
+  }
+
+  // Don't duplicate if already ran today
+  if (db.entries.some((e) => e.date === date)) {
+    console.log(`Ideas for ${date} already saved, skipping DB write.`);
+    return;
+  }
+
+  db.entries.push({
+    date,
+    aiTrends: aiTrends.slice(0, 8).map((t) => ({
+      title: t.title,
+      url: t.url,
+      source: t.source,
+      score: t.score,
+    })),
+    crypto: {
+      trending: cryptoData.trendingCoins.slice(0, 5),
+      gainers: cryptoData.topGainers.slice(0, 3),
+    },
+    ideas: ideas.map((idea, i) => ({
+      id: `${date}-${i + 1}`,
+      ...idea,
+      starred: false,
+    })),
+  });
+
+  // Keep last 90 days
+  if (db.entries.length > 90) {
+    db.entries = db.entries.slice(-90);
+  }
+
+  db.lastUpdated = new Date().toISOString();
+  writeFileSync(IDEAS_DB, JSON.stringify(db, null, 2));
+  console.log(`Saved ${ideas.length} ideas for ${date} to database.`);
 }
 
 main().catch((err) => {

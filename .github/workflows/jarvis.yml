@@ -6,6 +6,11 @@ on:
     - cron: "0 8 * * *"
   workflow_dispatch: # Allow manual trigger
 
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
 jobs:
   jarvis:
     runs-on: ubuntu-latest
@@ -24,3 +29,11 @@ jobs:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: node jarvis.mjs
+
+      - name: Commit ideas database
+        run: |
+          git config user.name "JARVIS Bot"
+          git config user.email "jarvis@bot.local"
+          git add data/ideas.json
+          git diff --cached --quiet || git commit -m "📊 JARVIS ideas $(date -u +%Y-%m-%d)"
+          git push
