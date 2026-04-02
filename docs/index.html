@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <!-- OWASP: Content Security Policy — block inline scripts, external resources -->
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; font-src 'self'; base-uri 'self'; form-action 'none'; frame-ancestors 'none';">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self' https://*.app.github.dev; font-src 'self'; base-uri 'self'; form-action 'none';">
   <!-- OWASP: Prevent MIME sniffing -->
   <meta http-equiv="X-Content-Type-Options" content="nosniff">
   <!-- OWASP: Referrer policy — don't leak paths -->
